@@ -1,6 +1,22 @@
+//////////// 输入参数区
+const startDay = '2021-01-04';   // 开始读经日期
+const days = 180; // 计划多少天读完
+const members = ['坤坤', '康慧'];  // 小组成员
+//////////// 输入参数区
+
+
 const fs = require('fs');
 const path = require('path');
+var xlsx = require('node-xlsx').default;
 const moment = require('moment');
+
+moment.locale('zh-cn', {
+  week: {
+    dow: 1,
+    doy: 4
+  }
+})
+
 const catalog = [
   ['创世记', '创', 50],
   ['出埃及记', '出', 40],
@@ -42,9 +58,6 @@ const catalog = [
   ['撒迦利亚书', '亚', 14],
   ['玛拉基书', '玛', 4],
 ];
-
-const startDay = '2021-01-04';
-const days = 180;
 
 function getTotalChapters() {
   return catalog.reduce((acc, it) => acc + it[2], 0);
@@ -101,7 +114,7 @@ function groupByVolumn() {
   let mergedCount = 0;
   for (let i = 0; i < catalog.length; i++) {
     const volume = catalog[i];
-    const volumeName = volume[0];
+    const volumeName = volume[1];
     const chapters = volume[2];
 
     const daysComplete = (chapters + mergedCount) / chapterOneDay;
@@ -158,6 +171,47 @@ function groupByVolumn() {
       }
     }).filter(d => d.total > 0);
   console.log('按卷分组后，实际需要', filtered.length + ' 天可读完')
-  fs.writeFileSync(path.join(__dirname, './groupByVolumn.json'), JSON.stringify(filtered, null, 2))
+  return filtered;
 }
-groupByVolumn()
+
+function main() {
+  const bibleDaily = groupByVolumn();
+  let bibleIndex = 0;
+  const sheetRows = [];
+  let startOfWeek = moment(startDay);
+  sheetRows.push([null, '周一', '周二', '周三', '周四', '周五', '周六', '周日'])
+
+  while (bibleIndex < bibleDaily.length) {
+    const bibleRow = [];
+    let weekDay = moment(startOfWeek).weekday()
+    const endOfWeek = moment(startOfWeek).endOf('week');
+    const daysRange = moment(startOfWeek).format('MM.DD') + '-' + moment(endOfWeek).format('MM.DD');
+
+    bibleRow.push(daysRange);
+    while (weekDay-- > 0) {
+      bibleRow.push(null);
+    }
+    while (startOfWeek <= endOfWeek) {
+      bibleRow.push(formatRead(bibleDaily[bibleIndex++]))
+      startOfWeek = moment(startOfWeek).add(1, 'day');
+    }
+    sheetRows.push(bibleRow);
+    members.forEach(m => {
+      sheetRows.push([m])
+    })
+  }
+
+  const wpx = 100
+  const options = { '!cols': [{ wpx }, { wpx }, { wpx }, { wpx }, { wpx }, { wpx }, { wpx }, { wpx }] };
+  var buffer = xlsx.build([{ name: "biblePlan", data: sheetRows }], options);
+  fs.writeFileSync(path.join(__dirname, 'biblePlan.xlsx'), buffer);
+}
+
+function formatRead(bible) {
+  if (bible) {
+    return bible.read.map(it => it.volumeName + it.from + '-' + it.to).join('、')
+  } else {
+    return null
+  }
+}
+main();
