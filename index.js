@@ -50,7 +50,8 @@ function getTotalChapters() {
   return catalog.reduce((acc, it) => acc + it[2], 0);
 }
 
-function main() {
+// 每天固定章节算法
+function fixedReadCount() {
   const totalChapters = getTotalChapters();
   const chapterOneDay = Math.ceil(totalChapters / days);
 
@@ -88,5 +89,75 @@ function main() {
   fs.writeFileSync(path.join(__dirname, './result.json'), JSON.stringify(result, null, 2))
 }
 
+// 按卷分组
+function groupByVolumn() {
+  const totalChapters = getTotalChapters();
+  const chapterOneDay = Math.ceil(totalChapters / days);
+  console.log('计划 ' + days + ' 天读完一遍旧约');
+  console.log('每天需要读 ' + chapterOneDay + ' 章左右');
+  const results = new Array(days * 1.5).fill(0).map((a, i) => ({ day: 'No.' + (i + 1), read: [] }));
+  let dayIndex = 0;
 
-main()
+  let mergedCount = 0;
+  for (let i = 0; i < catalog.length; i++) {
+    const volume = catalog[i];
+    const volumeName = volume[0];
+    const chapters = volume[2];
+
+    const daysComplete = (chapters + mergedCount) / chapterOneDay;
+
+    if (daysComplete <= 0.5) {
+      // 这卷数太少了，就并入下一卷书一起读吧
+      results[dayIndex].read.push({
+        volumeName,
+        from: 1,
+        to: chapters
+      })
+      mergedCount += chapters;
+    } else if (daysComplete < 1.2) {
+      // 凑活一天读完吧
+      results[dayIndex].read.push({
+        volumeName,
+        from: 1,
+        to: chapters
+      })
+      dayIndex++;
+      mergedCount = 0;
+    } else { // 平均分成多天读吧
+      // 几天读完
+      let volumeDays = Math.ceil(daysComplete);
+      // 每天读几章
+      const basicInDay = Math.floor(chapters / volumeDays);
+      // 有多少天需要多读一章
+      let remains = chapters - volumeDays * basicInDay;
+
+      let volumneIndex = 1;
+      while (volumneIndex <= chapters) {
+        const from = volumneIndex;
+        const readCount = basicInDay + (remains > 0 ? 1 : 0);
+        const to = from + readCount - 1 - mergedCount;
+        mergedCount = 0;
+
+        results[dayIndex].read.push({
+          volumeName,
+          from: volumneIndex,
+          to
+        })
+        dayIndex++;
+        remains--;
+        volumneIndex = to + 1
+      }
+    }
+  }
+
+  const filtered = results
+    .map(d => {
+      return {
+        ...d,
+        total: d.read.reduce((acc, it) => acc + it.to - it.from + 1, 0)
+      }
+    }).filter(d => d.total > 0);
+  console.log('按卷分组后，实际需要', filtered.length + ' 天可读完')
+  fs.writeFileSync(path.join(__dirname, './groupByVolumn.json'), JSON.stringify(filtered, null, 2))
+}
+groupByVolumn()
